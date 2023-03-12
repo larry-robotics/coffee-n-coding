@@ -28,7 +28,7 @@ accent_color = "orange"
 # Enabling dark background will also modify primary font color
 # to be darker.
 # Defaults to accent color (or, if not accent color specified, to blue).
-background_color = "dark"
+background_color = "orange"
 
 # The logo text - defaults to "Terminimal theme"
 logo_text = "Coffee And Coding"
