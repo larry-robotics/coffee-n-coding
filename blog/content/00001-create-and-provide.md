@@ -50,6 +50,14 @@ class file {
 };
 ```
 
+**Side Note:** Please use exceptions only for exceptional cases. This code throws
+a `std::runtime_error` to just illustrate the problem.
+Creating a file which already exists is far from being exceptional and should be
+handled in a different way.
+If it is impossible to recover from an error an exception is the right error
+strategy, for instance when accessing an out-of-bounds element inside a
+`std::vector` which could lead to a segmentation fault.
+
 ## The Bad Solution
 
 The exception-less implementations I have seen often use an additional variable
@@ -97,7 +105,7 @@ machine you have ideally zero operations with potentially undefined behavior so
 we have to perform these checks in `read` and `write`.
 
 Now we have created a file abstraction:
- * which is in a weird way nullable,
+ * which has an invalid state,
  * has performance overhead in every method,
  * has massive test overhead - every method has to be verified that the error
     case "construction not successful" is handled correctly,
