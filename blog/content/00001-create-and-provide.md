@@ -52,8 +52,8 @@ class file {
 
 **Side Note:** Please use exceptions only for exceptional cases. This code throws
 a `std::runtime_error` to just illustrate the problem.
-Creating a file which already exists is far from being exceptional and should be
-handled in a different way.
+Creating a file that already exists is far from exceptional and should be
+handled differently, for instance with the approach drafted in this article.
 If it is impossible to recover from an error an exception is the right error
 strategy, for instance when accessing an out-of-bounds element inside a
 `std::vector` which could lead to a segmentation fault.
@@ -63,7 +63,7 @@ strategy, for instance when accessing an out-of-bounds element inside a
 The exception-less implementations I have seen often use an additional variable
 to signal to the user if a construction was successful or not. So a variable
 named `construction_successful` is introduced and provided to the constructor
-as reference.
+as a reference.
 
 ```cpp
 class file {
@@ -97,19 +97,20 @@ on the file as if the construction was successful? So one has no other choice bu
 to store the variable `construction_successful` as an additional member and
 check it in every operation like `read` and `write` - which is horrible.
 
-Of course we could remove these checks for `read` and `write`, let it be
+Of course, we could remove these checks for `read` and `write`, let it be
 undefined behavior, and define the contract in a way that the user must verify
 `construction_successful` after construction. But there is one thing no one
-likes in an autonomous machines - it is undefined behavior! In a safety-critical
-machine you have ideally zero operations with potentially undefined behavior so
+likes in autonomous machines - it is undefined behavior! In a safety-critical
+machine, you have ideally zero operations with potentially undefined behavior so
 we have to perform these checks in `read` and `write`.
 
 Now we have created a file abstraction:
- * which has an invalid state,
- * has performance overhead in every method,
- * has massive test overhead - every method has to be verified that the error
+
+* which has an invalid state,
+* has a performance overhead in every method,
+* has massive test overhead - every method has to be verified that the error
     case "construction not successful" is handled correctly,
- * has massive error handling overhead - the user and implementer have to
+* has massive error handling overhead - the user and implementer have to
     handle calls to methods when the object is in an invalid state
 
 ## The Good Solution: Create And Provide
@@ -139,26 +140,146 @@ class file {
         return std::make_optional<file>(fd);
     }
 
+    // the constructor requires now only the actual resource, 
+    // the file descriptor
+    explicit file(const int fd) : fd{fd} {}
 // ...
 ```
 
 The `create` method returns either a `std::nullopt` when the construction
-failed or the file packed inside an optional.
+failed or the file packed inside an optional. We use `std::make_optional<file>`
+to construct a new file and forward the file descriptor `fd` to the `file`s
+constructor.
 
 By constructing the underlying resources outside of the
-class we removed all problems of the previous approach were we constructed
+class we removed all problems of the previous approach where we constructed
 the file descriptor inside the constructor.
 
- * This file variant is always valid - no longer nullable.
- * No performance overhead in methods like `read` and `write`.
- * It is even easier testable since we only have to check one function `create`
+* This file variant is always valid - no longer nullable.
+* No performance overhead in methods like `read` and `write`.
+* It is even easier to test since we only have to check one function `create`
     for failure instead of every method.
- * The error handling overhead is reduced for the user and the implementer.
+* The error handling overhead is reduced for the user and the implementer.
 
-To be fair, this approach is not applicable to all kind of resources. It assumes
-that the underlying resource is at least movable which is not the case for
-the handles of a POSIX mutex or unnamed semaphores. We tackle his challenge and
-the problem of a constructor with many arguments in the next blog article.
+To be fair, this approach does not apply to all kinds of resources out of the
+box. A file
+descriptor can always be copied and moved around but what if we have to deal
+with handles to mutex or semaphores? A `pthread_mutex_t` should never be copied
+or moved during the lifetime of the resource!
+
+## Dealing With Non-Movable Resources
+
+### Using `std::unique_ptr`
+
+Let's stick with the `file` example and we assume that the file descriptor `fd`
+is not allowed to be copied or moved after the `open` call was executed
+successfully. The easiest thing we can do is to pack the file descriptor into a
+`std::unique_ptr`, then it has a fixed memory position on the heap.
+
+```cpp
+class file {
+   // ...
+
+  private:
+    std::unique_ptr<int> fd;
+};
+```
+
+We modify the `create` method so that the return value of `open` is used to
+initialize the file descriptor on the heap.
+
+```cpp
+class file {
+    static std::optional<file> create(const std::string& path) {
+        auto fd = std::make_unique<int>(open(path.c_str(), O_EXCL | O_CREAT));
+
+        if (*fd == -1) {
+            return std::nullopt;
+        }
+
+        return std::make_optional<file>(std::move(fd));
+    }
+```
+
+Finally, we have to adjust the `file`s constructor so that it can handle the
+unique pointer.
+
+```cpp
+class file {
+    file(std::unique_ptr<int> && fd) : fd{std::move(fd)} {} 
+}
+```
+
+In a safety-critical domain, the usage of heap memory is often forbidden since
+we have to guarantee the availability of memory at all times. Therefore, all
+the required memory either resides on the stack or is allocated once during
+startup time.
+In this particular case, the `file` is also a system resource, and in the context
+of a safety-critical domain, it would make sense to create this also at startup
+time which would mitigate the problem of the heap allocation. Either we have
+enough memory available or we fail during startup.
+Nevertheless, let's assume we want to use our custom allocator.
+
+### Using `std::unique_ptr` With A Custom Allocator
+
+The `Allocator` may have a simple interface to allocate and deallocate
+memory.
+
+```cxx
+class Allocator {             
+   public:                    
+    template <typename T>     
+    T* allocate();
+    template <typename T>     
+    void deallocate(T* ptr);
+};                            
+```
+
+We modify the `create` method so that we provide a pointer to the allocator
+additionally.
+
+```cpp
+class file {                                                          
+   public:                                                            
+    static std::optional<file> create(const std::string& path,        
+                                      Allocator* const allocator) {   
+        // acquire memory
+        auto ptr_to_fd = allocator->allocate<int>();                  
+        // placement new inside the allocated memory
+        new (ptr_to_fd) int(open(path.c_str(), O_EXCL | O_CREAT));    
+
+        // add std::function<void(int*)> as custom deleter
+        std::unique_ptr<int, std::function<void(int*)>> fd(ptr_to_fd, 
+            // release the memory
+            [=](auto ptr) { allocator->deallocate(ptr); });
+                                                                      
+        if (*fd == -1) {                                              
+            return std::nullopt;                                      
+        }                                                             
+                                                                      
+        return std::make_optional<file>(std::move(fd));               
+    }                                                                 
+```
+
+The function starts by allocating memory for the file descriptor,
+initializing it with `open` as usual but in this case, we use placement new
+to create the file descriptor in the previously allocated memory.
+
+We add a custom deleter to the `std::unique_ptr` and define it with the
+closure `[=](auto ptr) { allocator->deallocate(ptr); }` that releases the
+memory in the allocator. Here we have to be cautious since the allocator must
+at least live as long as the created resource otherwise
+the `std::unique_ptr` accesses a dead object when it goes out of scope!
+
+Since the allocator type is part of the `std::unique_ptr` type we have to adjust
+the member type as well and are done.
+
+```cpp
+class file {
+  private:
+    std::unique_ptr<int, std::function<void(int*)>> fd;
+};
+```
 
 ## Summary
 
@@ -167,5 +288,5 @@ approach like "Create And Provide" can help you to implement RAII cleanly. The
 main idea is to create all the underlying handles and resources outside of the
 class, in a free function and provide these successfully created handles to
 the object itself.
-The object then takes care of the resources lifetimes and is always in a valid
+The object then takes care of the resource's lifetimes and is always in a valid
 state.
