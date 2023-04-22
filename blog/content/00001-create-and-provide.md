@@ -1,9 +1,9 @@
 +++
-title = "Construct And Provide - Why You Shouldn't Construct In The Constructor."
-date = 2023-04-16
+title = "Create And Provide - Why You Shouldn't Create In The Constructor."
+date = 2023-04-24
 
 [taxonomies]
-tags = ["c++", "design-pattern", "builder"]
+tags = ["c++", "raii", "posix"]
 +++
 
 ## The problem
@@ -28,9 +28,9 @@ A first implementation with exceptions may look like this:
 
 #define PANIC(msg)
 
-class file {
+class File {
    public:
-    file(const std::string& path) {
+    File(const std::string& path) {
         this->fd = open(path.c_str(), O_EXCL | O_CREAT);
         if (this->fd == -1) {
             throw std::runtime_error("failed to create file");
@@ -39,7 +39,7 @@ class file {
 
     // read and write operations
 
-    ~file() {
+    ~File() {
         if (close(this->fd) == -1) {
             PANIC("This should never happen. Unable to close file descriptor.");
         }
@@ -66,9 +66,9 @@ named `construction_successful` is introduced and provided to the constructor
 as a reference.
 
 ```cpp
-class file {
+class File {
    public:
-    file(const std::string & path, bool & construction_successful) {
+    File(const std::string & path, bool & construction_successful) {
         construction_successful = true;
         this->fd = open(path.c_str(), O_EXCL | O_CREAT);
         if (this->fd == -1) {
@@ -85,7 +85,7 @@ this:
 
 ```cpp
 bool construction_successful = false;
-file my_file(construction_successful);
+File my_file(construction_successful);
 if (!construction_successful) // perform error handling
 ```
 
@@ -128,27 +128,27 @@ This can be done in a static method `create` for instance.
 ```cpp
 #include <optional>
 
-class file {
+class File {
    public:
-    static std::optional<file> create(const std::string& path) {
+    static std::optional<File> create(const std::string& path) {
         int fd = open(path.c_str(), O_EXCL | O_CREAT);
 
         if (fd == -1) {
             return std::nullopt;
         }
 
-        return std::make_optional<file>(fd);
+        return std::make_optional<File>(fd);
     }
 
     // the constructor requires now only the actual resource, 
     // the file descriptor
-    explicit file(const int fd) : fd{fd} {}
+    explicit File(const int fd) : fd{fd} {}
 // ...
 ```
 
 The `create` method returns either a `std::nullopt` when the construction
-failed or the file packed inside an optional. We use `std::make_optional<file>`
-to construct a new file and forward the file descriptor `fd` to the `file`s
+failed or the file packed inside an optional. We use `std::make_optional<File>`
+to construct a new file and forward the file descriptor `fd` to the `File`s
 constructor.
 
 By constructing the underlying resources outside of the
@@ -171,13 +171,13 @@ or moved during the lifetime of the resource!
 
 ### Using `std::unique_ptr`
 
-Let's stick with the `file` example and we assume that the file descriptor `fd`
+Let's stick with the `File` example and we assume that the file descriptor `fd`
 is not allowed to be copied or moved after the `open` call was executed
 successfully. The easiest thing we can do is to pack the file descriptor into a
 `std::unique_ptr`, then it has a fixed memory position on the heap.
 
 ```cpp
-class file {
+class File {
    // ...
 
   private:
@@ -189,24 +189,24 @@ We modify the `create` method so that the return value of `open` is used to
 initialize the file descriptor on the heap.
 
 ```cpp
-class file {
-    static std::optional<file> create(const std::string& path) {
+class File {
+    static std::optional<File> create(const std::string& path) {
         auto fd = std::make_unique<int>(open(path.c_str(), O_EXCL | O_CREAT));
 
         if (*fd == -1) {
             return std::nullopt;
         }
 
-        return std::make_optional<file>(std::move(fd));
+        return std::make_optional<File>(std::move(fd));
     }
 ```
 
-Finally, we have to adjust the `file`s constructor so that it can handle the
+Finally, we have to adjust the `File`s constructor so that it can handle the
 unique pointer.
 
 ```cpp
-class file {
-    file(std::unique_ptr<int> && fd) : fd{std::move(fd)} {} 
+class File {
+    File(std::unique_ptr<int> && fd) : fd{std::move(fd)} {} 
 }
 ```
 
@@ -214,7 +214,7 @@ In a safety-critical domain, the usage of heap memory is often forbidden since
 we have to guarantee the availability of memory at all times. Therefore, all
 the required memory either resides on the stack or is allocated once during
 startup time.
-In this particular case, the `file` is also a system resource, and in the context
+In this particular case, the `File` is also a system resource, and in the context
 of a safety-critical domain, it would make sense to create this also at startup
 time which would mitigate the problem of the heap allocation. Either we have
 enough memory available or we fail during startup.
@@ -239,9 +239,9 @@ We modify the `create` method so that we provide a pointer to the allocator
 additionally.
 
 ```cpp
-class file {                                                          
+class File {                                                          
    public:                                                            
-    static std::optional<file> create(const std::string& path,        
+    static std::optional<File> create(const std::string& path,        
                                       Allocator* const allocator) {   
         // acquire memory
         auto ptr_to_fd = allocator->allocate<int>();                  
@@ -257,7 +257,7 @@ class file {
             return std::nullopt;                                      
         }                                                             
                                                                       
-        return std::make_optional<file>(std::move(fd));               
+        return std::make_optional<File>(std::move(fd));               
     }                                                                 
 ```
 
@@ -275,7 +275,7 @@ Since the allocator type is part of the `std::unique_ptr` type we have to adjust
 the member type as well and are done.
 
 ```cpp
-class file {
+class File {
   private:
     std::unique_ptr<int, std::function<void(int*)>> fd;
 };
