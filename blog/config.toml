@@ -55,6 +55,7 @@ menu_items = [
     # see documentation below for more details
     {name = "tags", url = "$BASE_URL/tags"},
     {name = "archive", url = "$BASE_URL/archive"},
+    {name = "found a mistake", url = "$BASE_URL/found_a_mistake"},
     {name = "about me", url = "$BASE_URL/about"},
 ]
 
