@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title></title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://larry-robotics.github.io/coffee-n-coding/style.css">
+    <link rel="stylesheet" href="https://larry-robotics.github.io/coffee-n-coding/color/orange.css">
+
+    <link rel="stylesheet" href="https://larry-robotics.github.io/coffee-n-coding/font-hack-subset.css">
+
+    </head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://larry-robotics.github.io/coffee-n-coding/" style="text-decoration: none;">
+                    <div class="logo">
+                      
+                            Coffee And Coding
+                        
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        
+                <nav class="menu">
+            <ul class="menu__inner">
+                <li class="active"><a href="https://larry-robotics.github.io/coffee-n-coding/">blog</a></li>
+            
+                <li><a href="https://larry-robotics.github.io/coffee-n-coding//tags">tags</a></li>
+            
+                <li><a href="https://larry-robotics.github.io/coffee-n-coding//archive">archive</a></li>
+            
+                <li><a href="https://larry-robotics.github.io/coffee-n-coding//found_a_mistake">found a mistake</a></li>
+            
+                <li><a href="https://larry-robotics.github.io/coffee-n-coding//about">about me</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+        <div class="posts">
+                <div class="post on-list">
+                    
+    <h1 class="post-title"><a href="https://larry-robotics.github.io/coffee-n-coding/00001-create-and-provide/">Create And Provide - Why You Shouldn&#x27;t Create In The Constructor.</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2023-04-24
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://larry-robotics.github.io/coffee-n-coding/tags/c/">#c++</a>&nbsp;
+                <a class="post-tag" href="https://larry-robotics.github.io/coffee-n-coding/tags/raii/">#raii</a>&nbsp;
+                <a class="post-tag" href="https://larry-robotics.github.io/coffee-n-coding/tags/posix/">#posix</a></span>
+    
+
+                    
+        <div class="post-content">
+            <h2 id="the-problem">The problem</h2>
+<p>When writing code in C++ for safety-critical applications one is facing
+numerous challenges and one of them is that exceptions are forbidden. I do
+not want to question the ban of exceptions itself but rather show how to cleanly
+construct objects when the constructor can fail. The standard approach is to
+throw an exception but what to do if this is off the table?</p>
+<p>Let's assume we would like to create a C++ abstraction for a POSIX file. We
+use <code>open</code> to create a new file and <code>close</code> to release the file descriptor.
+A first implementation with exceptions may look like this:</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">#include </span><span style="color:#556633;">&lt;</span><span style="color:#99ad6a;">fcntl.h</span><span style="color:#556633;">&gt;
+</span><span style="color:#8fbfdc;">#include </span><span style="color:#556633;">&lt;</span><span style="color:#99ad6a;">unistd.h</span><span style="color:#556633;">&gt;
+</span><span>
+</span><span style="color:#8fbfdc;">#include </span><span style="color:#556633;">&lt;</span><span style="color:#99ad6a;">iostream</span><span style="color:#556633;">&gt;
+</span><span style="color:#8fbfdc;">#include </span><span style="color:#556633;">&lt;</span><span style="color:#99ad6a;">stdexcept</span><span style="color:#556633;">&gt;
+</span><span style="color:#8fbfdc;">#include </span><span style="color:#556633;">&lt;</span><span style="color:#99ad6a;">string</span><span style="color:#556633;">&gt;
+</span><span>
+</span><span style="color:#8fbfdc;">#define </span><span style="color:#fad07a;">PANIC</span><span>(</span><span style="color:#ffb964;">msg</span><span>)
+</span><span>
+</span><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{
+</span><span>   </span><span style="color:#8fbfdc;">public</span><span>:
+</span><span>    </span><span style="color:#fad07a;">File</span><span>(</span><span style="color:#8fbfdc;">const</span><span> std::string&amp; </span><span style="color:#ffb964;">path</span><span>) {
+</span><span>        </span><span style="color:#ffb964;">this</span><span>-&gt;</span><span style="color:#ffb964;">fd </span><span>= </span><span style="color:#ffb964;">open</span><span>(path.</span><span style="color:#ffb964;">c_str</span><span>(), O_EXCL | O_CREAT);
+</span><span>        </span><span style="color:#8fbfdc;">if </span><span>(</span><span style="color:#ffb964;">this</span><span>-&gt;</span><span style="color:#ffb964;">fd </span><span>== -</span><span style="color:#cf6a4c;">1</span><span>) {
+</span><span>            </span><span style="color:#8fbfdc;">throw </span><span>std::</span><span style="color:#ffb964;">runtime_error</span><span>(</span><span style="color:#556633;">&quot;</span><span style="color:#99ad6a;">failed to create file</span><span style="color:#556633;">&quot;</span><span>);
+</span><span>        }
+</span><span>    }
+</span><span>
+</span><span>    </span><span style="color:#888888;">// read and write operations
+</span><span>
+</span><span>    </span><span style="color:#fad07a;">~File</span><span>() {
+</span><span>        </span><span style="color:#8fbfdc;">if </span><span>(</span><span style="color:#ffb964;">close</span><span>(</span><span style="color:#ffb964;">this</span><span>-&gt;</span><span style="color:#ffb964;">fd</span><span>) == -</span><span style="color:#cf6a4c;">1</span><span>) {
+</span><span>            </span><span style="color:#ffb964;">PANIC</span><span>(</span><span style="color:#556633;">&quot;</span><span style="color:#99ad6a;">This should never happen. Unable to close file descriptor.</span><span style="color:#556633;">&quot;</span><span>);
+</span><span>        }
+</span><span>    }
+</span><span>
+</span><span>   </span><span style="color:#8fbfdc;">private</span><span>:
+</span><span>    </span><span style="color:#8fbfdc;">int </span><span style="color:#ffb964;">fd</span><span>{-</span><span style="color:#cf6a4c;">1</span><span>};
+</span><span>};
+</span></code></pre>
+<p><strong>Side Note:</strong> Please use exceptions only for exceptional cases. This code throws
+a <code>std::runtime_error</code> to just illustrate the problem.
+Creating a file that already exists is far from exceptional and should be
+handled differently, for instance with the approach drafted in this article.
+If it is impossible to recover from an error an exception is the right error
+strategy, for instance when accessing an out-of-bounds element inside a
+<code>std::vector</code> which could lead to a segmentation fault.</p>
+<h2 id="the-bad-solution">The Bad Solution</h2>
+<p>The exception-less implementations I have seen often use an additional variable
+to signal to the user if a construction was successful or not. So a variable
+named <code>construction_successful</code> is introduced and provided to the constructor
+as a reference.</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{
+</span><span>   </span><span style="color:#8fbfdc;">public</span><span>:
+</span><span>    </span><span style="color:#fad07a;">File</span><span>(</span><span style="color:#8fbfdc;">const</span><span> std::string &amp; </span><span style="color:#ffb964;">path</span><span>, </span><span style="color:#8fbfdc;">bool </span><span>&amp; </span><span style="color:#ffb964;">construction_successful</span><span>) {
+</span><span>        construction_successful = true;
+</span><span>        </span><span style="color:#ffb964;">this</span><span>-&gt;</span><span style="color:#ffb964;">fd </span><span>= </span><span style="color:#ffb964;">open</span><span>(path.</span><span style="color:#ffb964;">c_str</span><span>(), O_EXCL | O_CREAT);
+</span><span>        </span><span style="color:#8fbfdc;">if </span><span>(</span><span style="color:#ffb964;">this</span><span>-&gt;</span><span style="color:#ffb964;">fd </span><span>== -</span><span style="color:#cf6a4c;">1</span><span>) {
+</span><span>            construction_successful = false;
+</span><span>        }
+</span><span>    }
+</span><span>
+</span><span>    </span><span style="color:#888888;">//...
+</span><span>}
+</span></code></pre>
+<p>The user now knows when the file construction failed and can take measures. Like
+this:</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">bool</span><span> construction_successful = false;
+</span><span>File </span><span style="color:#fad07a;">my_file</span><span>(</span><span style="color:#ffb964;">construction_successful</span><span>);
+</span><span style="color:#8fbfdc;">if </span><span>(!construction_successful) </span><span style="color:#888888;">// perform error handling
+</span></code></pre>
+<p>But this introduces now several problems. The destructor of the file does not
+know that the construction failed and still tries to destroy the object which
+will now cause a call to the non-recoverable error handling mechanism <code>PANIC</code>.
+Also, what happens when the user forgets to handle the error and continues working
+on the file as if the construction was successful? So one has no other choice but
+to store the variable <code>construction_successful</code> as an additional member and
+check it in every operation like <code>read</code> and <code>write</code> - which is horrible.</p>
+<p>Of course, we could remove these checks for <code>read</code> and <code>write</code>, let it be
+undefined behavior, and define the contract in a way that the user must verify
+<code>construction_successful</code> after construction. But there is one thing no one
+likes in autonomous machines - it is undefined behavior! In a safety-critical
+machine, you have ideally zero operations with potentially undefined behavior so
+we have to perform these checks in <code>read</code> and <code>write</code>.</p>
+<p>Now we have created a file abstraction:</p>
+<ul>
+<li>which has an invalid state,</li>
+<li>has a performance overhead in every method,</li>
+<li>has massive test overhead - every method has to be verified that the error
+case &quot;construction not successful&quot; is handled correctly,</li>
+<li>has massive error handling overhead - the user and implementer have to
+handle calls to methods when the object is in an invalid state</li>
+</ul>
+<h2 id="the-good-solution-create-and-provide">The Good Solution: Create And Provide</h2>
+<p>Did you ever realize that <code>std::unique_ptr</code> or <code>std::shared_ptr</code>, the prime
+examples of RAII, do not create the memory they own and manage? Either one
+has to use a construct like <code>std::make_unique</code> or calls the constructor
+directly and provide the memory with <code>new</code> like
+<code>auto ptr = std::unique_ptr&lt;int&gt;(new int(1))</code>.</p>
+<p>We should do the same thing here. Create our object, the initialized file
+descriptor, outside of the class and provide it to the constructor.
+This can be done in a static method <code>create</code> for instance.</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">#include </span><span style="color:#556633;">&lt;</span><span style="color:#99ad6a;">optional</span><span style="color:#556633;">&gt;
+</span><span>
+</span><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{
+</span><span>   </span><span style="color:#8fbfdc;">public</span><span>:
+</span><span>    </span><span style="color:#8fbfdc;">static</span><span> std::optional&lt;File&gt; </span><span style="color:#fad07a;">create</span><span>(</span><span style="color:#8fbfdc;">const</span><span> std::string&amp; </span><span style="color:#ffb964;">path</span><span>) {
+</span><span>        </span><span style="color:#8fbfdc;">int</span><span> fd = </span><span style="color:#ffb964;">open</span><span>(path.</span><span style="color:#ffb964;">c_str</span><span>(), O_EXCL | O_CREAT);
+</span><span>
+</span><span>        </span><span style="color:#8fbfdc;">if </span><span>(fd == -</span><span style="color:#cf6a4c;">1</span><span>) {
+</span><span>            </span><span style="color:#8fbfdc;">return</span><span> std::nullopt;
+</span><span>        }
+</span><span>
+</span><span>        </span><span style="color:#8fbfdc;">return </span><span>std::</span><span style="color:#ffb964;">make_optional</span><span>&lt;File&gt;(fd);
+</span><span>    }
+</span><span>
+</span><span>    </span><span style="color:#888888;">// the constructor requires now only the actual resource, 
+</span><span>    </span><span style="color:#888888;">// the file descriptor
+</span><span>    </span><span style="color:#8fbfdc;">explicit </span><span style="color:#fad07a;">File</span><span>(</span><span style="color:#8fbfdc;">const int </span><span style="color:#ffb964;">fd</span><span>) : </span><span style="color:#ffb964;">fd</span><span>{fd} {}
+</span><span style="color:#888888;">// ...
+</span></code></pre>
+<p>The <code>create</code> method returns either a <code>std::nullopt</code> when the construction
+failed or the file packed inside an optional. We use <code>std::make_optional&lt;File&gt;</code>
+to construct a new file and forward the file descriptor <code>fd</code> to the <code>File</code>s
+constructor.</p>
+<p>By constructing the underlying resources outside of the
+class we removed all problems of the previous approach where we constructed
+the file descriptor inside the constructor.</p>
+<ul>
+<li>This file variant is always valid - no longer nullable.</li>
+<li>No performance overhead in methods like <code>read</code> and <code>write</code>.</li>
+<li>It is even easier to test since we only have to check one function <code>create</code>
+for failure instead of every method.</li>
+<li>The error handling overhead is reduced for the user and the implementer.</li>
+</ul>
+<p>To be fair, this approach does not apply to all kinds of resources out of the
+box. A file
+descriptor can always be copied and moved around but what if we have to deal
+with handles to mutex or semaphores? A <code>pthread_mutex_t</code> should never be copied
+or moved during the lifetime of the resource!</p>
+<h2 id="dealing-with-non-movable-resources">Dealing With Non-Movable Resources</h2>
+<h3 id="using-std-unique-ptr">Using <code>std::unique_ptr</code></h3>
+<p>Let's stick with the <code>File</code> example and we assume that the file descriptor <code>fd</code>
+is not allowed to be copied or moved after the <code>open</code> call was executed
+successfully. The easiest thing we can do is to pack the file descriptor into a
+<code>std::unique_ptr</code>, then it has a fixed memory position on the heap.</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{
+</span><span>   </span><span style="color:#888888;">// ...
+</span><span>
+</span><span>  </span><span style="color:#8fbfdc;">private</span><span>:
+</span><span>    std::unique_ptr&lt;</span><span style="color:#8fbfdc;">int</span><span>&gt; fd;
+</span><span>};
+</span></code></pre>
+<p>We modify the <code>create</code> method so that the return value of <code>open</code> is used to
+initialize the file descriptor on the heap.</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{
+</span><span>    </span><span style="color:#8fbfdc;">static</span><span> std::optional&lt;File&gt; </span><span style="color:#fad07a;">create</span><span>(</span><span style="color:#8fbfdc;">const</span><span> std::string&amp; </span><span style="color:#ffb964;">path</span><span>) {
+</span><span>        </span><span style="color:#8fbfdc;">auto</span><span> fd = std::</span><span style="color:#ffb964;">make_unique</span><span>&lt;</span><span style="color:#8fbfdc;">int</span><span>&gt;(</span><span style="color:#ffb964;">open</span><span>(path.</span><span style="color:#ffb964;">c_str</span><span>(), O_EXCL | O_CREAT));
+</span><span>
+</span><span>        </span><span style="color:#8fbfdc;">if </span><span>(*fd == -</span><span style="color:#cf6a4c;">1</span><span>) {
+</span><span>            </span><span style="color:#8fbfdc;">return</span><span> std::nullopt;
+</span><span>        }
+</span><span>
+</span><span>        </span><span style="color:#8fbfdc;">return </span><span>std::</span><span style="color:#ffb964;">make_optional</span><span>&lt;File&gt;(std::</span><span style="color:#ffb964;">move</span><span>(fd));
+</span><span>    }
+</span></code></pre>
+<p>Finally, we have to adjust the <code>File</code>s constructor so that it can handle the
+unique pointer.</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{
+</span><span>    </span><span style="color:#fad07a;">File</span><span>(std::unique_ptr&lt;</span><span style="color:#8fbfdc;">int</span><span>&gt; &amp;&amp; </span><span style="color:#ffb964;">fd</span><span>) : </span><span style="color:#ffb964;">fd</span><span>{std::</span><span style="color:#ffb964;">move</span><span>(fd)} {} 
+</span><span>}
+</span></code></pre>
+<p>In a safety-critical domain, the usage of heap memory is often forbidden since
+we have to guarantee the availability of memory at all times. Therefore, all
+the required memory either resides on the stack or is allocated once during
+startup time.
+In this particular case, the <code>File</code> is also a system resource, and in the context
+of a safety-critical domain, it would make sense to create this also at startup
+time which would mitigate the problem of the heap allocation. Either we have
+enough memory available or we fail during startup.
+Nevertheless, let's assume we want to use our custom allocator.</p>
+<h3 id="using-std-unique-ptr-with-a-custom-allocator">Using <code>std::unique_ptr</code> With A Custom Allocator</h3>
+<p>The <code>Allocator</code> may have a simple interface to allocate and deallocate
+memory.</p>
+<pre data-lang="cxx" style="background-color:#151515;color:#e8e8d3;" class="language-cxx "><code class="language-cxx" data-lang="cxx"><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">Allocator </span><span>{             
+</span><span>   </span><span style="color:#8fbfdc;">public</span><span>:                    
+</span><span>    </span><span style="color:#8fbfdc;">template </span><span>&lt;</span><span style="color:#8fbfdc;">typename</span><span> T&gt;     
+</span><span>    T* </span><span style="color:#fad07a;">allocate</span><span>();
+</span><span>    </span><span style="color:#8fbfdc;">template </span><span>&lt;</span><span style="color:#8fbfdc;">typename</span><span> T&gt;     
+</span><span>    </span><span style="color:#8fbfdc;">void </span><span style="color:#fad07a;">deallocate</span><span>(T* </span><span style="color:#ffb964;">ptr</span><span>);
+</span><span>};                            
+</span></code></pre>
+<p>We modify the <code>create</code> method so that we provide a pointer to the allocator
+additionally.</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{                                                          
+</span><span>   </span><span style="color:#8fbfdc;">public</span><span>:                                                            
+</span><span>    </span><span style="color:#8fbfdc;">static</span><span> std::optional&lt;File&gt; </span><span style="color:#fad07a;">create</span><span>(</span><span style="color:#8fbfdc;">const</span><span> std::string&amp; </span><span style="color:#ffb964;">path</span><span>,        
+</span><span>                                      Allocator* </span><span style="color:#8fbfdc;">const </span><span style="color:#ffb964;">allocator</span><span>) {   
+</span><span>        </span><span style="color:#888888;">// acquire memory
+</span><span>        </span><span style="color:#8fbfdc;">auto</span><span> ptr_to_fd = allocator-&gt;</span><span style="color:#ffb964;">allocate</span><span>&lt;</span><span style="color:#8fbfdc;">int</span><span>&gt;();                  
+</span><span>        </span><span style="color:#888888;">// placement new inside the allocated memory
+</span><span>        </span><span style="color:#8fbfdc;">new </span><span>(ptr_to_fd) </span><span style="color:#8fbfdc;">int</span><span>(</span><span style="color:#ffb964;">open</span><span>(path.</span><span style="color:#ffb964;">c_str</span><span>(), O_EXCL | O_CREAT));    
+</span><span>
+</span><span>        </span><span style="color:#888888;">// add std::function&lt;void(int*)&gt; as custom deleter
+</span><span>        std::unique_ptr&lt;</span><span style="color:#8fbfdc;">int</span><span>, std::function&lt;</span><span style="color:#8fbfdc;">void</span><span>(</span><span style="color:#8fbfdc;">int</span><span>*)&gt;&gt; </span><span style="color:#ffb964;">fd</span><span>(ptr_to_fd, 
+</span><span>            </span><span style="color:#888888;">// release the memory
+</span><span>            [=](</span><span style="color:#8fbfdc;">auto</span><span> ptr) { allocator-&gt;</span><span style="color:#ffb964;">deallocate</span><span>(ptr); });
+</span><span>                                                                      
+</span><span>        </span><span style="color:#8fbfdc;">if </span><span>(*fd == -</span><span style="color:#cf6a4c;">1</span><span>) {                                              
+</span><span>            </span><span style="color:#8fbfdc;">return</span><span> std::nullopt;                                      
+</span><span>        }                                                             
+</span><span>                                                                      
+</span><span>        </span><span style="color:#8fbfdc;">return </span><span>std::</span><span style="color:#ffb964;">make_optional</span><span>&lt;File&gt;(std::</span><span style="color:#ffb964;">move</span><span>(fd));               
+</span><span>    }                                                                 
+</span></code></pre>
+<p>The function starts by allocating memory for the file descriptor,
+initializing it with <code>open</code> as usual but in this case, we use placement new
+to create the file descriptor in the previously allocated memory.</p>
+<p>We add a custom deleter to the <code>std::unique_ptr</code> and define it with the
+closure <code>[=](auto ptr) { allocator-&gt;deallocate(ptr); }</code> that releases the
+memory in the allocator. Here we have to be cautious since the allocator must
+at least live as long as the created resource otherwise
+the <code>std::unique_ptr</code> accesses a dead object when it goes out of scope!</p>
+<p>Since the allocator type is part of the <code>std::unique_ptr</code> type we have to adjust
+the member type as well and are done.</p>
+<pre data-lang="cpp" style="background-color:#151515;color:#e8e8d3;" class="language-cpp "><code class="language-cpp" data-lang="cpp"><span style="color:#8fbfdc;">class </span><span style="color:#ffb964;">File </span><span>{
+</span><span>  </span><span style="color:#8fbfdc;">private</span><span>:
+</span><span>    std::unique_ptr&lt;</span><span style="color:#8fbfdc;">int</span><span>, std::function&lt;</span><span style="color:#8fbfdc;">void</span><span>(</span><span style="color:#8fbfdc;">int</span><span>*)&gt;&gt; fd;
+</span><span>};
+</span></code></pre>
+<h2 id="summary">Summary</h2>
+<p>When dealing with failing constructors in an environment without exceptions an
+approach like &quot;Create And Provide&quot; can help you to implement RAII cleanly. The
+main idea is to create all the underlying handles and resources outside of the
+class, in a free function and provide these successfully created handles to
+the object itself.
+The object then takes care of the resource's lifetimes and is always in a valid
+state.</p>
+
+        </div>
+
+                </div>
+            <div class="pagination">
+                <div class="pagination__buttons"></div>
+            </div>
+        </div>
+        
+    </div>
+
+    
+    <footer class="footer">
+        <div class="footer__inner">
+                <div class="copyright">
+                        <span>© 
+    2023
+ Powered by <a href="https://www.getzola.org/">Zola</a></span>
+                    <span class="copyright-theme">
+                        <span class="copyright-theme-sep">:: </span>
+                        Theme: <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+                    </span>
+                </div>
+            </div>
+    </footer>
+    
+
+</div>
+</body>
+
+</html>

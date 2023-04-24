@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/</loc>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/00001-create-and-provide/</loc>
+        <lastmod>2023-04-24</lastmod>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/about/</loc>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/archive/</loc>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/found_a_mistake/</loc>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/tags/</loc>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/tags/c/</loc>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/tags/posix/</loc>
+    </url>
+    <url>
+        <loc>https://larry-robotics.github.io/coffee-n-coding/tags/raii/</loc>
+    </url>
+</urlset>
